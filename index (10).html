@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Akers Pharmacy — Drive-Thru Signature</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+// FIRST THING: grab token from URL before anything can wipe it
+(function() {
+  try {
+    var full = window.location.href;
+    var idx = full.indexOf('access_token=');
+    if (idx !== -1) {
+      var rest = full.substring(idx);
+      var pairs = rest.split('&');
+      var token = null, expires = 3600;
+      for (var i = 0; i < pairs.length; i++) {
+        var kv = pairs[i].split('=');
+        if (kv[0] === 'access_token') token = decodeURIComponent(kv[1]);
+        if (kv[0] === 'expires_in') expires = parseInt(kv[1]);
+      }
+      if (token) {
+        localStorage.setItem('rx_token', token);
+        localStorage.setItem('rx_token_expiry', (Date.now() + expires * 1000).toString());
+        // Force a clean reload so the app boots fresh with the stored token
+        window.location.replace('https://akersrx.github.io/akers-rx-signature/index.html');
+      }
+    }
+  } catch(e) {}
+})();
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  :root {
+    --navy: #0a2540;
+    --navy-mid: #163a5f;
+    --navy-light: #1e4d7b;
+    --gold: #c8a951;
+    --gold-light: #e8cc7a;
+    --gold-pale: #fdf6e3;
+    --white: #ffffff;
+    --off-white: #f8f7f4;
+    --border: #ddd8cc;
+    --text: #1a1a2e;
+    --text-mid: #4a5568;
+    --text-light: #8a9bb0;
+    --success-bg: #edf7ed;
+    --success: #2d7a2d;
+    --error-bg: #fdecea;
+    --error: #c0392b;
+    --info-bg: #e8f0fb;
+    --info: #1a56a8;
+    --radius: 12px;
+    --radius-sm: 8px;
+    --shadow: 0 2px 12px rgba(10,37,64,0.10);
+    --shadow-lg: 0 8px 32px rgba(10,37,64,0.15);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--off-white);
+    color: var(--text);
+    min-height: 100vh;
+    overscroll-behavior: none;
+  }
+
+  #login-screen {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    background: var(--navy);
+  }
+
+  .login-card {
+    background: var(--white);
+    border-radius: var(--radius);
+    padding: 2.5rem 2rem;
+    width: 100%;
+    max-width: 380px;
+    box-shadow: var(--shadow-lg);
+    text-align: center;
+  }
+
+  .rx-logo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 1.5rem;
+  }
+
+  .rx-mark {
+    width: 44px;
+    height: 44px;
+    background: var(--navy);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'DM Mono', monospace;
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--gold);
+  }
+
+  .rx-name {
+    text-align: left;
+  }
+
+  .rx-name .top { font-size: 15px; font-weight: 600; color: var(--navy); line-height: 1.2; }
+  .rx-name .sub { font-size: 11px; color: var(--text-light); letter-spacing: 0.04em; text-transform: uppercase; }
+
+  .login-title {
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+
+  .login-sub {
+    font-size: 13px;
+    color: var(--text-mid);
+    margin-bottom: 2rem;
+    line-height: 1.5;
+  }
+
+  .btn-google {
+    width: 100%;
+    padding: 12px 20px;
+    background: var(--navy);
+    color: var(--white);
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: background 0.15s;
+  }
+
+  .btn-google:hover { background: var(--navy-light); }
+
+  .google-icon {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+
+  #app-screen { display: none; }
+
+  .topbar {
+    background: var(--navy);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .topbar-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .topbar-rx {
+    font-family: 'DM Mono', monospace;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--gold);
+  }
+
+  .topbar-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.9);
+  }
+
+  .status-badge {
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-weight: 500;
+  }
+
+  .s-watching { background: rgba(200,169,81,0.2); color: var(--gold-light); }
+  .s-ready    { background: rgba(26,86,168,0.3); color: #7eb3f5; }
+  .s-signed   { background: rgba(45,122,45,0.3); color: #7ec87e; }
+  .s-error    { background: rgba(192,57,43,0.3); color: #f59e9e; }
+
+  .main { padding: 16px; max-width: 700px; margin: 0 auto; }
+
+  .card {
+    background: var(--white);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    padding: 16px;
+    margin-bottom: 14px;
+    box-shadow: var(--shadow);
+  }
+
+  .card-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-light);
+    margin-bottom: 10px;
+  }
+
+  #pdf-area {
+    width: 100%;
+    min-height: 300px;
+    background: var(--off-white);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+  }
+
+  #pdf-canvas {
+    max-width: 100%;
+    display: none;
+    border-radius: 4px;
+  }
+
+  #pdf-placeholder {
+    text-align: center;
+    padding: 2.5rem 1rem;
+  }
+
+  .watch-anim {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 14px;
+    position: relative;
+  }
+
+  .watch-ring {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: 3px solid var(--border);
+    border-top-color: var(--gold);
+    animation: spin 1.4s linear infinite;
+    position: absolute;
+  }
+
+  .watch-dot {
+    width: 10px;
+    height: 10px;
+    background: var(--navy);
+    border-radius: 50%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #pdf-placeholder p { font-size: 13px; color: var(--text-mid); line-height: 1.6; }
+  #pdf-placeholder .hint { font-size: 11px; color: var(--text-light); margin-top: 4px; }
+
+  #sig-name-input {
+    width: 100%;
+    font-size: 14px;
+    font-family: 'DM Sans', sans-serif;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--off-white);
+    color: var(--text);
+    margin-bottom: 10px;
+    outline: none;
+  }
+
+  #sig-name-input:focus { border-color: var(--navy-light); background: var(--white); }
+
+  #sig-canvas {
+    width: 100%;
+    height: 150px;
+    background: var(--off-white);
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius-sm);
+    cursor: crosshair;
+    touch-action: none;
+    display: block;
+  }
+
+  .sig-hint {
+    font-size: 11px;
+    color: var(--text-light);
+    text-align: center;
+    margin-top: 6px;
+  }
+
+  .btn-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    font-size: 13px;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 500;
+    padding: 10px 16px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--white);
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+
+  .btn:hover { background: var(--off-white); }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  .btn-primary {
+    background: var(--navy);
+    color: var(--white);
+    border-color: var(--navy);
+    flex: 1;
+  }
+
+  .btn-primary:hover { background: var(--navy-light); }
+
+  .btn-danger { color: var(--error); border-color: #f5c0bb; }
+  .btn-danger:hover { background: var(--error-bg); }
+
+  .msg {
+    font-size: 12px;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    margin-top: 10px;
+    line-height: 1.5;
+  }
+
+  .msg-info    { background: var(--info-bg);    color: var(--info); }
+  .msg-success { background: var(--success-bg); color: var(--success); }
+  .msg-error   { background: var(--error-bg);   color: var(--error); }
+
+  #activity-log {
+    font-size: 12px;
+    font-family: 'DM Mono', monospace;
+    color: var(--text-mid);
+    max-height: 90px;
+    overflow-y: auto;
+  }
+
+  .log-row { padding: 3px 0; border-bottom: 1px solid var(--off-white); display: flex; gap: 8px; }
+  .log-time { color: var(--text-light); flex-shrink: 0; }
+
+  .poll-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .poll-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--gold);
+    display: inline-block;
+    margin-right: 6px;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .folder-ids {
+    font-size: 12px;
+    font-family: 'DM Mono', monospace;
+    color: var(--text-mid);
+    background: var(--off-white);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    margin-top: 8px;
+    line-height: 1.8;
+  }
+
+  .folder-label { color: var(--text-light); font-size: 11px; }
+
+  input.folder-input {
+    width: 100%;
+    font-size: 12px;
+    font-family: 'DM Mono', monospace;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--off-white);
+    color: var(--text);
+    margin-top: 4px;
+    margin-bottom: 8px;
+    outline: none;
+  }
+
+  input.folder-input:focus { border-color: var(--navy-light); background: var(--white); }
+
+  .user-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.7);
+  }
+
+  .user-avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--gold);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--navy);
+    overflow: hidden;
+  }
+
+  .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+  .btn-signout {
+    font-size: 11px;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.6);
+    padding: 4px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    margin-left: 6px;
+  }
+
+  .gold-bar {
+    height: 3px;
+    background: linear-gradient(90deg, var(--gold), var(--gold-light), var(--gold));
+  }
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="rx-logo">
+      <div class="rx-mark">Rx</div>
+      <div class="rx-name">
+        <div class="top">Akers Pharmacy</div>
+        <div class="sub">Drive-Thru Signature</div>
+      </div>
+    </div>
+    <p class="login-title">Staff sign-in required</p>
+    <p class="login-sub">Sign in with the pharmacy Google account to access the signature pad.</p>
+    <button class="btn-google" onclick="signIn()">
+      <svg class="google-icon" viewBox="0 0 24 24">
+        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+      </svg>
+      Sign in with Google
+    </button>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app-screen">
+  <div class="gold-bar"></div>
+  <div class="topbar">
+    <div class="topbar-logo">
+      <span class="topbar-rx">Rx</span>
+      <span class="topbar-name">Akers Drive-Thru</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="status-badge s-watching" id="status-badge">Watching...</span>
+      <div class="user-chip">
+        <div class="user-avatar" id="user-avatar">?</div>
+        <button class="btn-signout" onclick="signOut()">Sign out</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+
+    <!-- Receipt Preview -->
+    <div class="card">
+      <div class="poll-row">
+        <div class="card-label" style="margin-bottom:0"><span class="poll-dot"></span>Receipt preview</div>
+        <span style="font-size:11px;color:var(--text-light)" id="poll-status">Polling Drive...</span>
+      </div>
+      <div id="pdf-area">
+        <canvas id="pdf-canvas"></canvas>
+        <div id="pdf-placeholder">
+          <div class="watch-anim"><div class="watch-ring"></div><div class="watch-dot"></div></div>
+          <p>Waiting for receipt PDF...</p>
+          <p class="hint">Save receipt from PioneerRx to the Incoming folder in Drive</p>
+        </div>
+      </div>
+      <div id="pdf-msg"></div>
+    </div>
+
+    <!-- Signature -->
+    <div class="card">
+      <div class="card-label">Patient signature</div>
+      <input id="sig-name-input" type="text" placeholder="Patient name (optional)" />
+      <canvas id="sig-canvas"></canvas>
+      <p class="sig-hint">Sign with finger above</p>
+      <div class="btn-row">
+        <button class="btn" onclick="clearSig()">Clear</button>
+        <button class="btn btn-primary" id="btn-save" onclick="saveSignedPdf()" disabled>Save signed receipt</button>
+        <button class="btn btn-danger" id="btn-discard" onclick="discardReceipt()" style="display:none">Discard</button>
+      </div>
+      <div id="save-msg"></div>
+    </div>
+
+    <!-- Folder Setup -->
+    <div class="card">
+      <div class="card-label">Drive folder settings</div>
+      <div class="folder-label">Incoming receipts folder ID</div>
+      <input class="folder-input" id="cfg-inbox" type="text" placeholder="Paste folder ID from Drive URL" />
+      <div class="folder-label">Signed receipts folder ID</div>
+      <input class="folder-input" id="cfg-outbox" type="text" placeholder="Paste folder ID from Drive URL" />
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="saveFolderConfig()">Save folders</button>
+        <button class="btn" onclick="testFolders()">Test connection</button>
+      </div>
+      <div id="cfg-msg"></div>
+    </div>
+
+    <!-- Activity Log -->
+    <div class="card">
+      <div class="card-label">Activity log</div>
+      <div id="activity-log">
+        <div class="log-row"><span class="log-time">--:--</span><span>App started. Sign in to begin.</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const CLIENT_ID = '133871263105-vgsunaeph49ssett3bq4qh2e1o28ls54.apps.googleusercontent.com';
+const SCOPES = 'https://www.googleapis.com/auth/drive';
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let accessToken = null;
+let pollTimer = null;
+let cfg = { inbox: '', outbox: '' };
+let currentFileId = null;
+let currentFileName = null;
+let currentPdfBytes = null;
+let seenIds = new Set();
+let sigDrawing = false;
+let sigHasContent = false;
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+
+function signIn() {
+  const redirectUri = 'https://akersrx.github.io/akers-rx-signature/';
+  const params = new URLSearchParams({
+    client_id: CLIENT_ID,
+    redirect_uri: redirectUri,
+    response_type: 'token',
+    scope: SCOPES,
+    prompt: 'select_account'
+  });
+  window.location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params;
+}
+
+function signOut() {
+  accessToken = null;
+  localStorage.removeItem('rx_token');
+  localStorage.removeItem('rx_token_expiry');
+  clearInterval(pollTimer);
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('app-screen').style.display = 'none';
+}
+
+function handleRedirect() {
+  // Check hash fragment for token — try both hash and search
+  const toCheck = window.location.hash + window.location.search;
+  
+  // Also check if token was stored by a previous page load
+  const stored = localStorage.getItem('rx_token');
+  const expiry = parseInt(localStorage.getItem('rx_token_expiry') || '0');
+
+  if (toCheck.includes('access_token')) {
+    // Handle both clean hash and mixed hash (e.g. #iss=...&access_token=...)
+    const fullStr = window.location.hash.substring(1) + '&' + window.location.search.substring(1);
+    const p = new URLSearchParams(fullStr);
+    const token = p.get('access_token');
+    const expiresIn = parseInt(p.get('expires_in') || '3600');
+    if (token) {
+      accessToken = token;
+      const exp = Date.now() + (expiresIn * 1000);
+      localStorage.setItem('rx_token', token);
+      localStorage.setItem('rx_token_expiry', exp.toString());
+      window.history.replaceState({}, document.title, window.location.pathname);
+      launchApp();
+      return true;
+    }
+  }
+  
+  if (stored && Date.now() < expiry) {
+    accessToken = stored;
+    launchApp();
+    return true;
+  }
+  
+  localStorage.removeItem('rx_token');
+  localStorage.removeItem('rx_token_expiry');
+  return false;
+}
+
+async function launchApp() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app-screen').style.display = 'block';
+  const saved = localStorage.getItem('rx_folder_cfg');
+  if (saved) {
+    cfg = JSON.parse(saved);
+    document.getElementById('cfg-inbox').value = cfg.inbox || '';
+    document.getElementById('cfg-outbox').value = cfg.outbox || '';
+  }
+  await loadUserInfo();
+  initSigCanvas();
+  startPolling();
+  log('Signed in. Watching for receipts.');
+}
+
+async function loadUserInfo() {
+  try {
+    const r = await gFetch('https://www.googleapis.com/oauth2/v3/userinfo');
+    const av = document.getElementById('user-avatar');
+    if (r.picture) av.innerHTML = `<img src="${r.picture}" alt="">`;
+    else av.textContent = (r.name || 'U')[0].toUpperCase();
+  } catch(e) {}
+}
+
+// ── Drive ─────────────────────────────────────────────────────────────────────
+
+async function gFetch(url, options = {}) {
+  const res = await fetch(url, {
+    ...options,
+    headers: { 'Authorization': 'Bearer ' + accessToken, ...(options.headers || {}) }
+  });
+  if (res.status === 401) { signOut(); throw new Error('Session expired. Please sign in again.'); }
+  if (options.rawResponse) return res;
+  return res.json();
+}
+
+async function pollDrive() {
+  if (!cfg.inbox || !accessToken) { setStatus('Set folder IDs below', 's-error'); return; }
+  try {
+    document.getElementById('poll-status').textContent = 'Checked ' + new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    const q = encodeURIComponent(`'${cfg.inbox}' in parents and mimeType='application/pdf' and trashed=false`);
+    const data = await gFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=createdTime+desc&pageSize=5&fields=files(id,name,createdTime)`);
+    if (!data.files || data.files.length === 0) return;
+    const newest = data.files[0];
+    if (!seenIds.has(newest.id) && newest.id !== currentFileId) {
+      log('New receipt: ' + newest.name);
+      loadPdf(newest.id, newest.name);
+    }
+  } catch(e) {
+    if (e.message !== 'Session expired. Please sign in again.') log('Poll error: ' + e.message);
+  }
+}
+
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  setStatus('Watching...', 's-watching');
+  pollDrive();
+  pollTimer = setInterval(pollDrive, 10000);
+}
+
+async function loadPdf(fileId, fileName) {
+  currentFileId = fileId;
+  seenIds.add(fileId);
+  currentFileName = fileName;
+  setStatus('Ready to sign', 's-ready');
+  document.getElementById('pdf-placeholder').style.display = 'none';
+  showMsg('pdf-msg', 'Loading receipt...', 'info');
+  try {
+    const res = await gFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { rawResponse: true });
+    const buf = await res.arrayBuffer();
+    currentPdfBytes = new Uint8Array(buf);
+    await renderPdf(currentPdfBytes);
+    document.getElementById('btn-save').disabled = false;
+    document.getElementById('btn-discard').style.display = 'inline-block';
+    showMsg('pdf-msg', 'Receipt loaded — have patient sign below.', 'info');
+    log('Receipt loaded: ' + fileName);
+  } catch(e) {
+    showMsg('pdf-msg', 'Failed to load PDF: ' + e.message, 'error');
+    document.getElementById('pdf-placeholder').style.display = 'block';
+  }
+}
+
+async function renderPdf(bytes) {
+  const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+  const page = await pdf.getPage(1);
+  const pdfArea = document.getElementById('pdf-area');
+  const scale = Math.min((pdfArea.clientWidth - 8) / page.getViewport({scale:1}).width, 2.5);
+  const vp = page.getViewport({ scale });
+  const canvas = document.getElementById('pdf-canvas');
+  canvas.width = vp.width;
+  canvas.height = vp.height;
+  await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+  canvas.style.display = 'block';
+  clearMsg('pdf-msg');
+}
+
+// ── Signature Canvas ──────────────────────────────────────────────────────────
+
+function initSigCanvas() {
+  const canvas = document.getElementById('sig-canvas');
+  const ctx = canvas.getContext('2d');
+
+  function resize() {
+    const w = canvas.parentElement.clientWidth - 32;
+    canvas.width = w * window.devicePixelRatio;
+    canvas.height = 150 * window.devicePixelRatio;
+    canvas.style.width = w + 'px';
+    canvas.style.height = '150px';
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    ctx.strokeStyle = '#0a2540';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  function pos(e) {
+    const r = canvas.getBoundingClientRect();
+    const src = e.touches ? e.touches[0] : e;
+    return [(src.clientX - r.left), (src.clientY - r.top)];
+  }
+
+  canvas.addEventListener('pointerdown', e => {
+    sigDrawing = true;
+    const [x,y] = pos(e);
+    ctx.beginPath(); ctx.moveTo(x,y);
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (!sigDrawing) return;
+    const [x,y] = pos(e);
+    ctx.lineTo(x,y); ctx.stroke();
+    sigHasContent = true;
+  });
+  canvas.addEventListener('pointerup', () => sigDrawing = false);
+  canvas.addEventListener('pointercancel', () => sigDrawing = false);
+}
+
+function clearSig() {
+  const canvas = document.getElementById('sig-canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  sigHasContent = false;
+}
+
+// ── Save ──────────────────────────────────────────────────────────────────────
+
+async function saveSignedPdf() {
+  if (!sigHasContent) { showMsg('save-msg', 'Please have the patient sign above first.', 'error'); return; }
+  if (!currentPdfBytes) { showMsg('save-msg', 'No receipt loaded.', 'error'); return; }
+  if (!cfg.outbox) { showMsg('save-msg', 'Please set the Signed folder ID below first.', 'error'); return; }
+
+  document.getElementById('btn-save').disabled = true;
+  showMsg('save-msg', 'Compositing signature onto receipt...', 'info');
+
+  try {
+    const pdfCanvas = document.getElementById('pdf-canvas');
+    const sigCanvas = document.getElementById('sig-canvas');
+    const sigCtx = sigCanvas.getContext('2d');
+
+    const PAD = 20;
+    const SIG_SECTION = 120;
+    const final = document.createElement('canvas');
+    final.width = pdfCanvas.width;
+    final.height = pdfCanvas.height + SIG_SECTION;
+    const ctx = final.getContext('2d');
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, final.width, final.height);
+    ctx.drawImage(pdfCanvas, 0, 0);
+
+    const sigY = pdfCanvas.height;
+    ctx.strokeStyle = '#ddd8cc';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(PAD, sigY + 14);
+    ctx.lineTo(final.width - PAD, sigY + 14);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = '#8a9bb0';
+    ctx.font = '500 11px DM Sans, sans-serif';
+    const name = document.getElementById('sig-name-input').value.trim();
+    const dateStr = new Date().toLocaleString('en-US', {month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    ctx.fillText('PATIENT SIGNATURE' + (name ? '  ·  ' + name.toUpperCase() : '') + '  ·  ' + dateStr, PAD, sigY + 8);
+
+    const scaleX = (final.width - PAD * 2) / (sigCanvas.width / window.devicePixelRatio);
+    const scaleY = (SIG_SECTION - 24) / (sigCanvas.height / window.devicePixelRatio);
+    const scale = Math.min(scaleX, scaleY, 1.5);
+    const sigW = (sigCanvas.width / window.devicePixelRatio) * scale;
+    const sigH = (sigCanvas.height / window.devicePixelRatio) * scale;
+    ctx.drawImage(sigCanvas, PAD, sigY + 20, sigW, sigH);
+
+    ctx.fillStyle = '#0a2540';
+    ctx.font = '500 10px DM Mono, monospace';
+    ctx.fillText('Akers Pharmacy · Est. 1954 · Gastonia NC', PAD, final.height - 6);
+
+    final.toBlob(async (blob) => {
+      const outName = currentFileName.replace(/\.pdf$/i, '') + '_SIGNED_' + Date.now() + '.png';
+      await uploadFile(blob, outName, 'image/png', cfg.outbox);
+      setStatus('Signed — attach in PioneerRx', 's-signed');
+      showMsg('save-msg', `Saved as "${outName}" in the Signed folder. Open PioneerRx → folder button → RxReceipts_Signed to attach.`, 'success');
+      log('Signed receipt saved: ' + outName);
+      document.getElementById('btn-discard').textContent = 'Clear for next patient';
+      document.getElementById('btn-save').disabled = false;
+    }, 'image/png');
+
+  } catch(e) {
+    showMsg('save-msg', 'Error saving: ' + e.message, 'error');
+    document.getElementById('btn-save').disabled = false;
+  }
+}
+
+async function uploadFile(blob, name, mimeType, folderId) {
+  const meta = JSON.stringify({ name, parents: [folderId] });
+  const form = new FormData();
+  form.append('metadata', new Blob([meta], { type: 'application/json' }));
+  form.append('file', blob);
+  const data = await gFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+    method: 'POST', body: form
+  });
+  if (data.error) throw new Error(data.error.message);
+  return data;
+}
+
+function discardReceipt() {
+  clearSig();
+  currentPdfBytes = null; currentFileName = null; currentFileId = null;
+  document.getElementById('pdf-canvas').style.display = 'none';
+  document.getElementById('pdf-placeholder').style.display = 'block';
+  document.getElementById('btn-save').disabled = true;
+  document.getElementById('btn-discard').style.display = 'none';
+  document.getElementById('btn-discard').textContent = 'Discard';
+  clearMsg('pdf-msg'); clearMsg('save-msg');
+  setStatus('Watching...', 's-watching');
+  log('Receipt discarded. Watching for next.');
+}
+
+// ── Config ────────────────────────────────────────────────────────────────────
+
+function saveFolderConfig() {
+  cfg.inbox = document.getElementById('cfg-inbox').value.trim();
+  cfg.outbox = document.getElementById('cfg-outbox').value.trim();
+  if (!cfg.inbox || !cfg.outbox) { showMsg('cfg-msg', 'Enter both folder IDs.', 'error'); return; }
+  localStorage.setItem('rx_folder_cfg', JSON.stringify(cfg));
+  showMsg('cfg-msg', 'Folders saved. Restarting poll...', 'success');
+  startPolling();
+  log('Folder config saved.');
+}
+
+async function testFolders() {
+  const inbox = document.getElementById('cfg-inbox').value.trim();
+  if (!inbox) { showMsg('cfg-msg', 'Enter inbox folder ID first.', 'error'); return; }
+  showMsg('cfg-msg', 'Testing...', 'info');
+  try {
+    const q = encodeURIComponent(`'${inbox}' in parents`);
+    const data = await gFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&pageSize=1&fields=files(id)`);
+    if (data.error) throw new Error(data.error.message);
+    showMsg('cfg-msg', 'Connection successful! Folder is accessible.', 'success');
+    log('Drive connection test passed.');
+  } catch(e) {
+    showMsg('cfg-msg', 'Test failed: ' + e.message, 'error');
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function setStatus(text, cls) {
+  const el = document.getElementById('status-badge');
+  el.textContent = text;
+  el.className = 'status-badge ' + cls;
+}
+
+function showMsg(id, text, type) {
+  document.getElementById(id).innerHTML = `<div class="msg msg-${type}">${text}</div>`;
+}
+
+function clearMsg(id) {
+  document.getElementById(id).innerHTML = '';
+}
+
+function log(msg) {
+  const el = document.getElementById('activity-log');
+  const t = new Date().toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  const row = document.createElement('div');
+  row.className = 'log-row';
+  row.innerHTML = `<span class="log-time">${t}</span><span>${msg}</span>`;
+  el.prepend(row);
+  while (el.children.length > 20) el.removeChild(el.lastChild);
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+// Debug: show what's in the URL on load
+const debugInfo = 'HREF: ' + window.location.href + ' | HASH: ' + window.location.hash + ' | SEARCH: ' + window.location.search;
+localStorage.setItem('rx_debug', debugInfo);
+
+if (!handleRedirect()) {
+  document.getElementById('login-screen').style.display = 'flex';
+  // Show debug info on login screen
+  const dbg = document.createElement('p');
+  dbg.style = 'font-size:10px;color:#888;margin-top:20px;word-break:break-all;padding:0 10px;';
+  dbg.textContent = localStorage.getItem('rx_debug') || 'no debug';
+  document.querySelector('.login-card').appendChild(dbg);
+}
+</script>
+</body>
+</html>
