@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Akers Pharmacy — Drive-Thru Signature</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  :root {
+    --navy: #0a2540;
+    --navy-light: #1e4d7b;
+    --gold: #c8a951;
+    --gold-light: #e8cc7a;
+    --white: #ffffff;
+    --off-white: #f8f7f4;
+    --border: #ddd8cc;
+    --text: #1a1a2e;
+    --text-mid: #4a5568;
+    --text-light: #8a9bb0;
+    --success-bg: #edf7ed;
+    --success: #2d7a2d;
+    --error-bg: #fdecea;
+    --error: #c0392b;
+    --info-bg: #e8f0fb;
+    --info: #1a56a8;
+    --radius: 12px;
+    --radius-sm: 8px;
+    --shadow: 0 2px 12px rgba(10,37,64,0.10);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--off-white); min-height: 100vh; }
+
+  .gold-bar { height: 3px; background: linear-gradient(90deg, var(--gold), var(--gold-light), var(--gold)); }
+
+  .topbar {
+    background: var(--navy);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .topbar-logo { display: flex; align-items: center; gap: 8px; }
+  .topbar-rx { font-family: 'DM Mono', monospace; font-size: 14px; font-weight: 500; color: var(--gold); }
+  .topbar-name { font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.9); }
+  .status-badge { font-size: 11px; padding: 4px 10px; border-radius: 20px; font-weight: 500; }
+  .s-waiting { background: rgba(200,169,81,0.2); color: var(--gold-light); }
+  .s-ready   { background: rgba(26,86,168,0.3); color: #7eb3f5; }
+  .s-signed  { background: rgba(45,122,45,0.3); color: #7ec87e; }
+
+  .main { padding: 16px; max-width: 700px; margin: 0 auto; }
+
+  .card { background: var(--white); border-radius: var(--radius); border: 1px solid var(--border); padding: 16px; margin-bottom: 14px; box-shadow: var(--shadow); }
+  .card-label { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-light); margin-bottom: 10px; }
+
+  /* Upload zone */
+  #upload-zone {
+    width: 100%;
+    min-height: 160px;
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    padding: 2rem;
+    text-align: center;
+    position: relative;
+  }
+  #upload-zone:hover, #upload-zone.drag-over { border-color: var(--navy); background: var(--info-bg); }
+  #upload-zone .icon { font-size: 36px; margin-bottom: 10px; }
+  #upload-zone p { font-size: 14px; font-weight: 500; color: var(--text); margin-bottom: 4px; }
+  #upload-zone .hint { font-size: 12px; color: var(--text-light); }
+  #file-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+
+  /* PDF preview */
+  #pdf-area { width: 100%; background: var(--off-white); border-radius: var(--radius-sm); border: 1px solid var(--border); overflow: hidden; display: none; }
+  #pdf-canvas { max-width: 100%; display: block; }
+
+  /* Signature */
+  #sig-name-input { width: 100%; font-size: 14px; font-family: 'DM Sans', sans-serif; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--off-white); color: var(--text); margin-bottom: 10px; outline: none; }
+  #sig-name-input:focus { border-color: var(--navy-light); background: var(--white); }
+  #sig-canvas { width: 100%; height: 150px; background: var(--off-white); border: 1.5px dashed var(--border); border-radius: var(--radius-sm); cursor: crosshair; touch-action: none; display: block; }
+  .sig-hint { font-size: 11px; color: var(--text-light); text-align: center; margin-top: 6px; }
+
+  .btn-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .btn { font-size: 13px; font-family: 'DM Sans', sans-serif; font-weight: 500; padding: 10px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--white); color: var(--text); cursor: pointer; transition: all 0.12s; }
+  .btn:hover { background: var(--off-white); }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  .btn-primary { background: var(--navy); color: var(--white); border-color: var(--navy); flex: 1; }
+  .btn-primary:hover { background: var(--navy-light); }
+  .btn-danger { color: var(--error); border-color: #f5c0bb; }
+  .btn-danger:hover { background: var(--error-bg); }
+  .btn-big { padding: 14px 20px; font-size: 15px; }
+
+  .msg { font-size: 12px; padding: 8px 12px; border-radius: var(--radius-sm); margin-top: 10px; line-height: 1.5; }
+  .msg-info    { background: var(--info-bg);    color: var(--info); }
+  .msg-success { background: var(--success-bg); color: var(--success); }
+  .msg-error   { background: var(--error-bg);   color: var(--error); }
+
+  .step-row { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--off-white); }
+  .step-row:last-child { border-bottom: none; }
+  .step-num { width: 24px; height: 24px; border-radius: 50%; background: var(--navy); color: var(--gold); font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+  .step-text { font-size: 13px; color: var(--text-mid); line-height: 1.5; }
+  .step-text strong { color: var(--text); font-weight: 500; }
+</style>
+</head>
+<body>
+
+<div class="gold-bar"></div>
+<div class="topbar">
+  <div class="topbar-logo">
+    <span class="topbar-rx">Rx</span>
+    <span class="topbar-name">Akers Drive-Thru Signature</span>
+  </div>
+  <span class="status-badge s-waiting" id="status-badge">Waiting for receipt</span>
+</div>
+
+<div class="main">
+
+  <!-- How it works -->
+  <div class="card" id="instructions-card">
+    <div class="card-label">How to use</div>
+    <div class="step-row"><div class="step-num">1</div><div class="step-text"><strong>Save the receipt PDF</strong> from PioneerRx to the Dropbox folder on the PC. It will sync to the iPad automatically.</div></div>
+    <div class="step-row"><div class="step-num">2</div><div class="step-text"><strong>Tap "Load Receipt PDF" below</strong> and navigate to the Dropbox app → RxReceipts_Incoming folder → select the PDF.</div></div>
+    <div class="step-row"><div class="step-num">3</div><div class="step-text"><strong>Patient signs</strong> in the signature box with their finger.</div></div>
+    <div class="step-row"><div class="step-num">4</div><div class="step-text"><strong>Tap "Save &amp; Download"</strong> — the signed receipt saves to your Photos and Downloads. Then attach it in PioneerRx.</div></div>
+  </div>
+
+  <!-- PDF loader -->
+  <div class="card">
+    <div class="card-label">Receipt PDF</div>
+    <div id="upload-zone">
+      <input type="file" id="file-input" accept="application/pdf" />
+      <div class="icon">📄</div>
+      <p>Tap to load receipt PDF</p>
+      <p class="hint">Opens Dropbox, Files, or Photos</p>
+    </div>
+    <div id="pdf-area">
+      <canvas id="pdf-canvas"></canvas>
+    </div>
+    <div id="pdf-msg"></div>
+    <div class="btn-row" id="pdf-btn-row" style="display:none">
+      <button class="btn btn-danger" onclick="clearReceipt()">Load different PDF</button>
+    </div>
+  </div>
+
+  <!-- Signature -->
+  <div class="card">
+    <div class="card-label">Patient signature</div>
+    <input id="sig-name-input" type="text" placeholder="Patient name (optional)" />
+    <canvas id="sig-canvas"></canvas>
+    <p class="sig-hint">Sign with finger above</p>
+    <div class="btn-row">
+      <button class="btn" onclick="clearSig()">Clear signature</button>
+      <button class="btn btn-primary btn-big" id="btn-save" onclick="saveSignedImage()" disabled>Save &amp; Download signed receipt</button>
+    </div>
+    <div id="save-msg"></div>
+  </div>
+
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let currentPdfBytes = null;
+let currentFileName = '';
+let sigDrawing = false;
+let sigHasContent = false;
+
+// ── File input ────────────────────────────────────────────────────────────────
+document.getElementById('file-input').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  currentFileName = file.name;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    currentPdfBytes = new Uint8Array(ev.target.result);
+    renderPdf(currentPdfBytes);
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+async function renderPdf(bytes) {
+  showMsg('pdf-msg', 'Loading...', 'info');
+  try {
+    const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+    const page = await pdf.getPage(1);
+    const area = document.getElementById('pdf-area');
+    const scale = Math.min((window.innerWidth - 64) / page.getViewport({scale:1}).width, 2.5);
+    const vp = page.getViewport({ scale });
+    const canvas = document.getElementById('pdf-canvas');
+    canvas.width = vp.width;
+    canvas.height = vp.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+    document.getElementById('upload-zone').style.display = 'none';
+    area.style.display = 'block';
+    document.getElementById('pdf-btn-row').style.display = 'flex';
+    document.getElementById('btn-save').disabled = false;
+    clearMsg('pdf-msg');
+    setStatus('Ready to sign', 's-ready');
+  } catch(e) {
+    showMsg('pdf-msg', 'Could not load PDF: ' + e.message, 'error');
+  }
+}
+
+function clearReceipt() {
+  currentPdfBytes = null;
+  currentFileName = '';
+  document.getElementById('upload-zone').style.display = 'flex';
+  document.getElementById('pdf-area').style.display = 'none';
+  document.getElementById('pdf-btn-row').style.display = 'none';
+  document.getElementById('btn-save').disabled = true;
+  document.getElementById('file-input').value = '';
+  clearSig();
+  clearMsg('pdf-msg');
+  clearMsg('save-msg');
+  setStatus('Waiting for receipt', 's-waiting');
+}
+
+// ── Signature ─────────────────────────────────────────────────────────────────
+(function initSig() {
+  const canvas = document.getElementById('sig-canvas');
+  const ctx = canvas.getContext('2d');
+  function resize() {
+    const w = Math.min(window.innerWidth - 64, 700 - 32);
+    canvas.width = w * window.devicePixelRatio;
+    canvas.height = 150 * window.devicePixelRatio;
+    canvas.style.width = w + 'px';
+    canvas.style.height = '150px';
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    ctx.strokeStyle = '#0a2540';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  function pos(e) {
+    const r = canvas.getBoundingClientRect();
+    const src = e.touches ? e.touches[0] : e;
+    return [src.clientX - r.left, src.clientY - r.top];
+  }
+  canvas.addEventListener('pointerdown', e => {
+    sigDrawing = true;
+    const [x,y] = pos(e);
+    ctx.beginPath(); ctx.moveTo(x,y);
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (!sigDrawing) return;
+    const [x,y] = pos(e);
+    ctx.lineTo(x,y); ctx.stroke();
+    sigHasContent = true;
+  });
+  canvas.addEventListener('pointerup', () => sigDrawing = false);
+  canvas.addEventListener('pointercancel', () => sigDrawing = false);
+})();
+
+function clearSig() {
+  const canvas = document.getElementById('sig-canvas');
+  canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  sigHasContent = false;
+}
+
+// ── Save ──────────────────────────────────────────────────────────────────────
+async function saveSignedImage() {
+  if (!currentPdfBytes) { showMsg('save-msg', 'Please load a receipt PDF first.', 'error'); return; }
+  if (!sigHasContent) { showMsg('save-msg', 'Please have the patient sign first.', 'error'); return; }
+
+  document.getElementById('btn-save').disabled = true;
+  showMsg('save-msg', 'Preparing signed receipt...', 'info');
+
+  try {
+    const pdfCanvas = document.getElementById('pdf-canvas');
+    const sigCanvas = document.getElementById('sig-canvas');
+    const SIG_H = 130;
+    const PAD = 20;
+
+    const final = document.createElement('canvas');
+    final.width = pdfCanvas.width;
+    final.height = pdfCanvas.height + SIG_H;
+    const ctx = final.getContext('2d');
+
+    // White background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, final.width, final.height);
+
+    // Receipt
+    ctx.drawImage(pdfCanvas, 0, 0);
+
+    // Divider line
+    const sigY = pdfCanvas.height;
+    ctx.strokeStyle = '#ddd8cc';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(PAD, sigY + 16);
+    ctx.lineTo(final.width - PAD, sigY + 16);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Label
+    ctx.fillStyle = '#8a9bb0';
+    ctx.font = '500 11px DM Sans, sans-serif';
+    const name = document.getElementById('sig-name-input').value.trim();
+    const dateStr = new Date().toLocaleString('en-US', {month:'short', day:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit'});
+    ctx.fillText('PATIENT SIGNATURE' + (name ? '  ·  ' + name.toUpperCase() : '') + '  ·  ' + dateStr, PAD, sigY + 10);
+
+    // Signature
+    const maxSigW = final.width - PAD * 2;
+    const sigNativeW = sigCanvas.width / window.devicePixelRatio;
+    const sigNativeH = sigCanvas.height / window.devicePixelRatio;
+    const scale = Math.min(maxSigW / sigNativeW, (SIG_H - 30) / sigNativeH, 1.5);
+    ctx.drawImage(sigCanvas, PAD, sigY + 22, sigNativeW * scale, sigNativeH * scale);
+
+    // Footer
+    ctx.fillStyle = '#0a2540';
+    ctx.font = '10px DM Mono, monospace';
+    ctx.fillText('Akers Pharmacy  ·  Est. 1954  ·  Gastonia, NC', PAD, final.height - 6);
+
+    // Download
+    const outName = currentFileName.replace(/\.pdf$/i, '') + '_SIGNED_' + Date.now() + '.png';
+    final.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = outName;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      setStatus('Signed — attach in PioneerRx', 's-signed');
+      showMsg('save-msg', 'Downloaded as "' + outName + '". Go to PioneerRx → folder button → Files app → Downloads → attach it.', 'success');
+      document.getElementById('btn-save').disabled = false;
+    }, 'image/png');
+
+  } catch(e) {
+    showMsg('save-msg', 'Error: ' + e.message, 'error');
+    document.getElementById('btn-save').disabled = false;
+  }
+}
+
+function setStatus(text, cls) {
+  const el = document.getElementById('status-badge');
+  el.textContent = text;
+  el.className = 'status-badge ' + cls;
+}
+function showMsg(id, text, type) {
+  document.getElementById(id).innerHTML = '<div class="msg msg-' + type + '">' + text + '</div>';
+}
+function clearMsg(id) { document.getElementById(id).innerHTML = ''; }
+</script>
+</body>
+</html>
